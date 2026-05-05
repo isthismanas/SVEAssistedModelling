@@ -1,0 +1,28 @@
+.idea/
+.DS_Store
+DegradeV2/
+data/PROTAC/
+data/PROTAC_regression/
+data/_downloads/
+__pycache__/
+config/__pycache__/
+checkpoint/
+checkpoint_regression/
+log/
+model/
+latent/
+runs/
+
+# Local-only docs
+CLAUDE.md
+
+# Learner/explainer docs (local only — not for the repo)
+agent.md
+AGENTS.md
+explanation.md
+regressiondocs/
+DEGRADEMASTER_*.md
+ZERO_TO_MASTER_GUIDE.md
+DegradeMaster_*.html
+DegradeMaster_Index.html
+website/

@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+molinsim/
+.venv/
+
+# Local datasets and generated artifacts.
+data/**
+artifacts/**
+downstream/data/**
+!downstream/data/.gitkeep
+!downstream/data/README.md
+downstream/checkpoint/
+downstream/checkpoint_regression/
+downstream/log/
+downstream/model/
+downstream/latent/
+downstream/runs/
+AGENTS.md
+README.md
+ROADMAP.md
+docs/

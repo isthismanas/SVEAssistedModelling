@@ -1,0 +1,124 @@
+{
+  "project_name": "molecular_interaction_simulation",
+  "last_update": "2026-04-07T21:16:49+09:30",
+  "current_stage": "stage_3_spatial_fusion",
+  "goal": {
+    "id": "qm9_property_regression",
+    "description": "Predict QM9 quantum properties with spatially-aware graph models.",
+    "task_type": "regression",
+    "target_field": "gap",
+    "requires_3d_geometry": true
+  },
+  "dataset_plan": {
+    "primary": "QM9",
+    "primary_id": "qm9",
+    "local_available": true,
+    "selection_reasons": [
+      "supports task type",
+      "has 3D geometry",
+      "contains target field",
+      "already available locally"
+    ],
+    "ensured_dataset": "qm9",
+    "ensured_samples": 130831
+  },
+  "metrics_plan": {
+    "primary": [
+      "rmse",
+      "mae"
+    ],
+    "secondary": [
+      "r2"
+    ]
+  },
+  "milestones": {
+    "stage_1_goal_metric_dataset_defined": "completed",
+    "stage_2_baselines": "in_progress",
+    "stage_3_spatial_fusion": "in_progress",
+    "stage_4_interaction_supervision": "pending",
+    "stage_5_productionization": "pending"
+  },
+  "event_log": [
+    {
+      "time": "2026-03-09T18:06:06+10:30",
+      "event": "Initialized code-first project scaffold and planning artifacts."
+    },
+    {
+      "time": "2026-03-09T18:08:16+10:30",
+      "event": "Bootstrapped state for goal 'qm9_property_regression' with dataset 'qm9'."
+    },
+    {
+      "time": "2026-03-09T18:09:28+10:30",
+      "event": "Profiled dataset 'qm9' and wrote data_profile_qm9.json."
+    },
+    {
+      "time": "2026-03-09T21:18:15+10:30",
+      "event": "Ensured dataset 'qm9' in data/ folder."
+    },
+    {
+      "time": "2026-03-09T21:18:21+10:30",
+      "event": "Started Stage 2 baseline training for target 'gap' with 512 samples."
+    },
+    {
+      "time": "2026-03-09T21:27:57+10:30",
+      "event": "Bootstrapped state for goal 'qm9_property_regression' with dataset 'qm9'."
+    },
+    {
+      "time": "2026-03-09T21:28:33+10:30",
+      "event": "Ensured dataset 'qm9' in data/ folder."
+    },
+    {
+      "time": "2026-03-09T21:28:33+10:30",
+      "event": "Started Stage 2 baseline training for target 'gap' with 128 samples."
+    },
+    {
+      "time": "2026-03-09T21:38:44+10:30",
+      "event": "Added comprehensive code reference docs in docs/ for all modules and scripts."
+    },
+    {
+      "time": "2026-03-09T21:43:23+10:30",
+      "event": "Created master exhaustive explainer doc docs/project_full_system_explainer.md with integrated appendices."
+    },
+    {
+      "time": "2026-03-09T22:23:14+10:30",
+      "event": "Added docs/presentation_master_goal_and_code_explainer.md with corrected goal, metrics, exhaustive file explanations, and embedded code listings."
+    },
+    {
+      "time": "2026-03-09T22:48:45+10:30",
+      "event": "Added docs/codeblock_then_explain_full.md in strict codeblock-then-explanation format with project goal and metrics context."
+    },
+    {
+      "time": "2026-03-09T23:27:46+10:30",
+      "event": "Started graph-to-voxel training on QM9 (samples=64, grid=16)"
+    },
+    {
+      "time": "2026-03-09T23:56:37+10:30",
+      "event": "Added docs/LINE_BY_LINE_CODE_GUIDE.md as primary per-line code explanation guide and updated docs index."
+    },
+    {
+      "time": "2026-03-10T00:02:38+10:30",
+      "event": "Promoted docs/LINE_BY_LINE_SEMANTIC_GUIDE.md as primary documentation and updated docs index."
+    },
+    {
+      "time": "2026-04-07T18:50:11+09:30",
+      "event": "Added build_academic_report.py plus Mermaid-backed manuscript sources and generated SPATIAL_FUSION_ACADEMIC_REPORT.docx."
+    },
+    {
+      "time": "2026-04-07T19:01:00+09:30",
+      "event": "Expanded the academic report toward data sourcing and preprocessing, added sample-data report assets, and included a rendered voxel plus tensor and embedding examples."
+    },
+    {
+      "time": "2026-04-07T21:16:49+09:30",
+      "event": "Added a separate assignment-specific data and method report with rubric-focused methodology, prior-work references, and dedicated DOCX build automation."
+    }
+  ],
+  "artifacts": {
+    "data_profile_qm9": "/Users/isthismanas/Documents/Deep_Models/Molecule interaction simulation proof of concept /artifacts/data_profile_qm9.json",
+    "baseline_qm9_gap": "/Users/isthismanas/Documents/Deep_Models/Molecule interaction simulation proof of concept /artifacts/baseline_qm9_gap.json",
+    "graph_to_voxel_qm9": "/Users/isthismanas/Documents/Deep_Models/Molecule interaction simulation proof of concept /artifacts/graph_to_voxel_qm9.json",
+    "spatial_fusion_academic_report": "/Users/isthismanas/Documents/Deep_Models/Molecule interaction simulation proof of concept /docs/SPATIAL_FUSION_ACADEMIC_REPORT.docx",
+    "spatial_fusion_report_example_json": "/Users/isthismanas/Documents/Deep_Models/Molecule interaction simulation proof of concept /docs/report_assets/sample_data_example.json",
+    "spatial_fusion_report_example_voxel": "/Users/isthismanas/Documents/Deep_Models/Molecule interaction simulation proof of concept /docs/report_assets/sample_voxel_gdb_1.png",
+    "assignment2_data_method_report": "/Users/isthismanas/Documents/Deep_Models/Molecule interaction simulation proof of concept /docs/ASSIGNMENT2_DATA_METHOD_REPORT.docx"
+  }
+}
