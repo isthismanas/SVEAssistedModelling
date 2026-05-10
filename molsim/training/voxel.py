@@ -18,6 +18,9 @@ class VoxelTrainingConfig:
     batch_size: int = 16
     epochs: int = 5
     device: str = "cpu"
+    occupied_weight: float = 8.0
+    occupancy_threshold: float = 0.1
+    sparsity_weight: float = 1e-3
 
 
 class VoxelTrainer:
@@ -40,7 +43,23 @@ class VoxelTrainer:
             lr=train_config.lr,
             weight_decay=train_config.weight_decay,
         )
-        self.loss_fn = torch.nn.MSELoss()
+
+    def _loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        base = torch.nn.functional.mse_loss(pred, target)
+
+        occ_mask = target >= self.train_config.occupancy_threshold
+        if torch.any(occ_mask):
+            occ_loss = torch.nn.functional.mse_loss(pred[occ_mask], target[occ_mask])
+        else:
+            occ_loss = pred.new_tensor(0.0)
+
+        # Penalize diffuse positive fields that look like filled cubes.
+        sparsity = pred.mean()
+        return (
+            base
+            + (self.train_config.occupied_weight * occ_loss)
+            + (self.train_config.sparsity_weight * sparsity)
+        )
 
     def fit(self, train_data: list[Any], val_data: list[Any]) -> list[dict[str, float]]:
         train_loader = GeoDataLoader(train_data, batch_size=self.train_config.batch_size, shuffle=True)
@@ -78,7 +97,7 @@ class VoxelTrainer:
             pred, _ = self.model(batch.x.float(), batch.edge_index, batch.batch)
 
             self.optimizer.zero_grad()
-            loss = self.loss_fn(pred, target)
+            loss = self._loss(pred, target)
             loss.backward()
             self.optimizer.step()
 

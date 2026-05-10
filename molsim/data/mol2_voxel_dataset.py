@@ -6,15 +6,16 @@ from typing import Iterable
 import torch
 from torch.utils.data import Dataset
 
-from molsim.spatial import VoxelConfig, parse_mol2_structure, voxelize_positions
+from molsim.spatial import VoxelConfig, normalize_voxel, parse_mol2_structure, voxelize_positions
 
 
 class Mol2VoxelDataset(Dataset):
     """Lazy mol2->voxel dataset for spatial autoencoder training."""
 
-    def __init__(self, mol2_paths: Iterable[str | Path], voxel_config: VoxelConfig) -> None:
+    def __init__(self, mol2_paths: Iterable[str | Path], voxel_config: VoxelConfig, normalize: bool = True) -> None:
         self.paths = [Path(p).resolve() for p in mol2_paths]
         self.voxel_config = voxel_config
+        self.normalize = bool(normalize)
 
     def __len__(self) -> int:
         return len(self.paths)
@@ -23,6 +24,8 @@ class Mol2VoxelDataset(Dataset):
         path = self.paths[idx]
         coords, atomic_nums, _ = parse_mol2_structure(path)
         voxel = voxelize_positions(coords, atomic_nums, self.voxel_config)
+        if self.normalize:
+            voxel = normalize_voxel(voxel)
         return voxel
 
 

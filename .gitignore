@@ -1,12 +1,17 @@
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+.DS_Store
 molinsim/
 .venv/
+molsim_spatial_gnn.egg-info/
 
 # Local datasets and generated artifacts.
 data/**
 artifacts/**
+*.pt
+*.pth
+*.pkl
 downstream/data/**
 !downstream/data/.gitkeep
 !downstream/data/README.md
@@ -16,7 +21,12 @@ downstream/log/
 downstream/model/
 downstream/latent/
 downstream/runs/
-AGENTS.md
+downstream/runs_classification/
+downstream/runs_regression/
+downstream/eval/
+results/generated/
+CLAUDE.md
 README.md
 ROADMAP.md
+run.md
 docs/

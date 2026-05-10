@@ -17,14 +17,42 @@ import time
 import sys
 from prepare_data import GraphData
 from dataset import VOCAB
-from utils.pseudo_utils import split_dataset
 from nn_utils import load_model, setup_seed
 
 TRAIN_NAME = "test"
-root = "data/PROTAC"
 
 args = get_args()
 setup_seed(args.seed)
+root = str(getattr(args, "dataset_root", "data/PROTAC"))
+
+
+def _select_device():
+    requested = str(getattr(args, "device", "auto")).lower()
+    if requested == "mps":
+        return torch.device("mps")
+    if requested == "cuda":
+        return torch.device("cuda")
+    if requested == "cpu":
+        return torch.device("cpu")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+def _split_aligned_indices(name_list, labels, train_ratio, seed):
+    labeled_indices = [i for i, y in enumerate(labels) if int(y) != -1]
+    unlabeled_indices = [i for i, y in enumerate(labels) if int(y) == -1]
+
+    rng = np.random.default_rng(seed)
+    labeled_indices = np.asarray(labeled_indices, dtype=np.int64)
+    if labeled_indices.size > 0:
+        rng.shuffle(labeled_indices)
+    train_size = int(len(labeled_indices) * train_ratio)
+    train_indices = labeled_indices[:train_size].tolist() + unlabeled_indices
+    test_indices = labeled_indices[train_size:].tolist()
+    return train_indices, test_indices
 
 def main():
     protac_graphs = GraphData('protac', root=root,
@@ -43,8 +71,27 @@ def main():
     name_list = list(name_dic.keys())
 
 
-    label = torch.load(os.path.join(target_pocket.processed_dir, "label.pt"))
-    feature = torch.load(os.path.join(target_pocket.processed_dir, "feature.pt"))
+    label = torch.load(os.path.join(target_pocket.processed_dir, "label.pt"), weights_only=False)
+    feature = torch.load(os.path.join(target_pocket.processed_dir, "feature.pt"), weights_only=False)
+
+    # Keep classification indexing aligned with processed graph/feature tensors.
+    max_feature_rows = int(feature.shape[0])
+    filtered_name_list = []
+    for key in name_list:
+        try:
+            idx = int(key)
+        except ValueError:
+            continue
+        if 0 <= idx < max_feature_rows:
+            filtered_name_list.append(key)
+    name_list = filtered_name_list
+
+    n_common = min(len(name_list), len(label), len(feature), len(protac_graphs), len(ligase_pocket), len(target_pocket))
+    if n_common == 0:
+        raise RuntimeError("No aligned classification samples available after index filtering")
+    name_list = name_list[:n_common]
+    label = label[:n_common]
+    feature = feature[:n_common]
     if not args.feature:
         feature = np.random.rand(feature.shape[0], feature.shape[1])
 
@@ -70,7 +117,7 @@ def main():
     logging.info(f"test data: {test_size}")
     logging.info(f"positive label number: {pos_num}")
     logging.info(f"negative label number: {neg_num}")
-    train_indicies, test_indicies = split_dataset(os.path.join(root, '{}.json'.format(args.dataset_type)), args.train_rate)
+    train_indicies, test_indicies = _split_aligned_indices(name_list, label, args.train_rate, args.seed)
 
     train_dataset = torch.utils.data.Subset(protac_set, train_indicies)
     test_dataset = torch.utils.data.Subset(protac_set, test_indicies)
@@ -101,8 +148,11 @@ def main():
         ligase_pocket_model,
         target_pocket_model,
         args.hidden_size,
+        protac_dim=args.protac_dim,
+        tar_dim=args.tar_dim,
+        e3_dim=args.e3_dim,
     )
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = _select_device()
     writer = None
 
     if args.mode == 'Train':
@@ -142,6 +192,29 @@ def main():
     print('F1 in infer: ', np.mean(f1_l))
     print('PRE in infer: ', np.mean(pre_l))
     print('REC in infer: ', np.mean(rec_l))
+
+    save_dir = Path(getattr(args, "save_dir", "runs_classification"))
+    if not save_dir.is_absolute():
+        save_dir = Path.cwd() / save_dir
+    run_name = str(getattr(args, "run_name", "classification_run"))
+    run_dir = (save_dir / run_name).resolve()
+    run_dir.mkdir(parents=True, exist_ok=True)
+    final_metrics = {
+        "loss": float(np.mean(loss_l)),
+        "accuracy": float(np.mean(acc_l)),
+        "auc": float(np.mean(auc_l)),
+        "f1": float(np.mean(f1_l)),
+        "precision": float(np.mean(pre_l)),
+        "recall": float(np.mean(rec_l)),
+        "dataset_root": str(Path(root).resolve()),
+        "dataset_type": args.dataset_type,
+        "run_name": run_name,
+        "feature": bool(args.feature),
+        "protac_dim": int(args.protac_dim),
+    }
+    with open(run_dir / "final_metrics.json", "w") as f:
+        json.dump(final_metrics, f, indent=2)
+    print(f"Saved metrics: {run_dir / 'final_metrics.json'}")
 
 if __name__ == "__main__":
     Path('log').mkdir(exist_ok=True)

@@ -288,11 +288,17 @@ class ProtacModel(nn.Module):
                  protac_model,
                  ligase_pocket_model,
                  target_pocket_model,
-                 hidden_size):
+                 hidden_size,
+                 protac_dim=167,
+                 tar_dim=30,
+                 e3_dim=30):
         super().__init__()
         self.protac_model = protac_model
         self.ligase_pocket_model = ligase_pocket_model
         self.target_pocket_model = target_pocket_model
+        self.protac_dim = int(protac_dim)
+        self.tar_dim = int(tar_dim)
+        self.e3_dim = int(e3_dim)
         self.fc1 = nn.Linear(hidden_size * 3, hidden_size)
         self.relu = nn.LeakyReLU(negative_slope=0.01)
         self.fc2 = nn.Linear(hidden_size, 2)
@@ -303,7 +309,12 @@ class ProtacModel(nn.Module):
                 target_pocket,
                 feature
                 ):
-        fea_protac, fea_tar, fea_e3 = feature[:, :167], feature[:, 167:197], feature[:, 197:227]
+        p_end = self.protac_dim
+        t_end = p_end + self.tar_dim
+        e_end = t_end + self.e3_dim
+        fea_protac = feature[:, :p_end]
+        fea_tar = feature[:, p_end:t_end]
+        fea_e3 = feature[:, t_end:e_end]
         v_0 = self.protac_model(protac_graphs, fea_protac)
         v_1 = self.ligase_pocket_model(ligase_pocket, fea_e3)
         v_3 = self.target_pocket_model(target_pocket, fea_tar)

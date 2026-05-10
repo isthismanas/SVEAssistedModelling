@@ -241,7 +241,7 @@ def main() -> None:
             project_root=project_root,
             regression_root=regression_data_root,
             config_path=generated_cfg,
-            python_exe=sys.executable,
+            python_exe=str(getattr(args, "python", sys.executable)),
         )
 
     print("[regression] Done")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -48,7 +49,9 @@ class GraphToVoxelNet(nn.Module):
         h = self.fc_decode(z)
         h = h.view(-1, 64, self.init_size, self.init_size, self.init_size)
         h = F.relu(self.deconv1(h))
-        return F.softplus(self.deconv2(h))
+        # Shift softplus so zero logits map to zero output instead of ~0.693.
+        out = F.softplus(self.deconv2(h)) - math.log(2.0)
+        return torch.clamp_min(out, 0.0)
 
     def forward(self, x, edge_index, batch_index):
         latent = self.encode(x, edge_index, batch_index)

@@ -14,7 +14,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from prepare_data import mol2graph, pdb_to_mol2
 
-import pymol
+try:
+    import pymol  # type: ignore
+    _PYMOL_IMPORT_ERROR = None
+except Exception as exc:  # pragma: no cover - environment-dependent optional runtime
+    pymol = None
+    _PYMOL_IMPORT_ERROR = exc
 
 def smile2mol(smile, name, comp_id, path):
 
@@ -155,6 +160,11 @@ def analyze_mol2graph(path):
     print('edge_index: ', graph.edge_index)
 
 def pdb2mol2(pdb_path):
+    if pymol is None:
+        raise RuntimeError(
+            "PyMOL is not available in the current environment. "
+            "Install/fix the PyMOL runtime before calling pdb2mol2()."
+        ) from _PYMOL_IMPORT_ERROR
     pymol.cmd.load(pdb_path)
     mol2_path = os.path.basename(os.path.splitext(pdb_path)[0]) + '.mol2'
     pymol.cmd.save(mol2_path)

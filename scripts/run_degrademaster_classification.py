@@ -9,6 +9,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOWNSTREAM_ROOT = PROJECT_ROOT / "downstream"
+DEFAULT_PYTHON = str(PROJECT_ROOT / "molinsim" / "bin" / "python")
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--python",
         type=str,
-        default=sys.executable,
+        default=DEFAULT_PYTHON,
         help="Python interpreter to use for the downstream run.",
     )
     return parser.parse_args()

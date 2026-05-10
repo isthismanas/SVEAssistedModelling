@@ -1,0 +1,79 @@
+{
+  "project_root": "/Users/isthismanas/Documents/SVEAssistedModelling",
+  "diagnostics_generated_from": "existing artifact json files",
+  "models": {
+    "baseline_qm9_gap": {
+      "epochs": 50,
+      "max_samples": 5000,
+      "test_metrics": {
+        "val_rmse": 0.9365558965227374,
+        "val_mae": 0.7276141533851623,
+        "val_r2": 0.5176862690564347
+      },
+      "assessment": "needs_review",
+      "notes": [
+        "Negative test R2 means the current baseline is not yet reliable for generalization claims."
+      ]
+    },
+    "graph_to_voxel_qm9": {
+      "epochs": 40,
+      "max_samples": 12000,
+      "test_metrics": {
+        "val_voxel_mse": 0.014614307678923352,
+        "val_voxel_overlap": 0.2551634079562932
+      },
+      "assessment": "needs_review",
+      "notes": [],
+      "failure_mode_hypothesis": [
+        "Sparse voxel targets plus plain MSE favored diffuse low-information predictions.",
+        "Old decoder output activation biased predictions toward globally positive fields."
+      ],
+      "recommended_changes_applied": [
+        "Shifted softplus output so zero logits map to zero output.",
+        "Added occupied-region weighting in reconstruction loss.",
+        "Added sparsity penalty to discourage filled-cube predictions.",
+        "Raised graph-to-voxel training defaults to larger sample count and longer runs."
+      ],
+      "reference_mse": 0.014614307678923352
+    },
+    "graph_to_voxel_qm9_smoke": {
+      "epochs": 1,
+      "max_samples": 128,
+      "test_metrics": {
+        "val_voxel_mse": 0.3055809365432533,
+        "val_voxel_overlap": 0.04274204799123836
+      },
+      "assessment": "poor",
+      "notes": [
+        "Voxel overlap is near zero, indicating the model is not reconstructing localized structure.",
+        "Training run is far too short for a deployment-quality spatial decoder."
+      ],
+      "failure_mode_hypothesis": [
+        "Sparse voxel targets plus plain MSE favored diffuse low-information predictions.",
+        "Old decoder output activation biased predictions toward globally positive fields."
+      ],
+      "recommended_changes_applied": [
+        "Shifted softplus output so zero logits map to zero output.",
+        "Added occupied-region weighting in reconstruction loss.",
+        "Added sparsity penalty to discourage filled-cube predictions.",
+        "Raised graph-to-voxel training defaults to larger sample count and longer runs."
+      ],
+      "reference_mse": 0.3055809365432533
+    },
+    "voxel_autoencoder_qm9": {
+      "epochs": 40,
+      "max_samples": 12000,
+      "test_metrics": {
+        "val_recon_mse": 0.00023133844992625997
+      },
+      "assessment": "weak_but_promising",
+      "notes": [],
+      "recommended_changes_applied": [
+        "Shifted softplus output so zero logits map to zero output.",
+        "Added occupied-region weighting in reconstruction loss.",
+        "Added sparsity penalty to discourage diffuse reconstruction fields.",
+        "Raised default autoencoder training duration."
+      ]
+    }
+  }
+}

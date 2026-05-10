@@ -22,7 +22,7 @@ from molsim.training import RegressionTrainer, TrainingConfig
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train Stage 2 QM9 baseline model.")
     parser.add_argument("--target", type=str, default="gap", help="QM9 target name.")
-    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--max-samples", type=int, default=5000)
     parser.add_argument("--seed", type=int, default=42)

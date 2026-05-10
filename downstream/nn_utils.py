@@ -2,6 +2,7 @@
 # -*- coding:utf-8 -*-
 import os.path
 from copy import copy
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -49,10 +50,13 @@ def save_model(epoch, model, args):
     saved_content['OurModel'] = model.state_dict()
     saved_content['epoch'] = epoch
 
-    if not os.path.exists('checkpoint/{}'.format(args.epoch)):
-        os.mkdir('checkpoint/{}'.format(args.epoch))
-    # torch.save(saved_content, 'checkpoint/{}/{}_{}.pth'.format(args.dataset,args.setting, gen_num))
-    torch.save(saved_content, 'checkpoint/{}/model_{}_{}.pth'.format(args.epoch, args.conv_name, args.epoch))
+    save_dir = Path(getattr(args, 'save_dir', 'checkpoint'))
+    if not save_dir.is_absolute():
+        save_dir = Path.cwd() / save_dir
+    run_name = str(getattr(args, 'run_name', 'classification_run'))
+    ckpt_dir = (save_dir / run_name / 'checkpoints').resolve()
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    torch.save(saved_content, ckpt_dir / 'model_{}_{}.pth'.format(args.conv_name, args.epoch))
 
     return
 
@@ -61,7 +65,12 @@ def load_model(model, args, loaded_epoch, case_study=False):
         loaded_content = torch.load('checkpoint/1000/model_for_case_study.pth',
                                     map_location=lambda storage, loc: storage)
     else:
-        loaded_content = torch.load('checkpoint/{}/model_{}_{}.pth'.format(loaded_epoch, args.conv_name, loaded_epoch),
+        save_dir = Path(getattr(args, 'save_dir', 'checkpoint'))
+        if not save_dir.is_absolute():
+            save_dir = Path.cwd() / save_dir
+        run_name = str(getattr(args, 'run_name', 'classification_run'))
+        ckpt_path = (save_dir / run_name / 'checkpoints' / 'model_{}_{}.pth'.format(args.conv_name, loaded_epoch)).resolve()
+        loaded_content = torch.load(str(ckpt_path),
                                     map_location=lambda storage, loc: storage)
 
 

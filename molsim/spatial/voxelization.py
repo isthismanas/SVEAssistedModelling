@@ -50,3 +50,11 @@ def voxelize_data(data, config: VoxelConfig) -> torch.Tensor:
     pos = data.pos
     z = data.z if hasattr(data, "z") else None
     return voxelize_positions(pos, z, config)
+
+
+def normalize_voxel(voxel: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    """Normalize a voxel tensor by its own max intensity into [0, 1]."""
+    max_val = torch.amax(voxel)
+    if float(max_val) <= eps:
+        return voxel.clone()
+    return voxel / max_val.clamp_min(eps)

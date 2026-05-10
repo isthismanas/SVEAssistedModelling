@@ -73,14 +73,41 @@ def smile2mol(smile, name, comp_id, path):
     m=Chem.MolFromMol2File("./data/PROTAC/{}/{}_lig.mol2".format(path, name),sanitize=False)
     Draw.MolToImage(m)
 
+
+def _find_section_start(lines, header: str) -> int:
+    for idx, line in enumerate(lines):
+        if line.strip() == header:
+            return idx
+    raise ValueError(f"{header!r} is not in mol2 file")
+
+
+def _find_next_section(lines, start_idx: int) -> int:
+    for idx in range(start_idx, len(lines)):
+        if lines[idx].startswith('@<TRIPOS>'):
+            return idx
+    return len(lines)
+
+
+def _atom_and_bond_lines(lines, input_type: str):
+    atom_start = _find_section_start(lines, '@<TRIPOS>ATOM') + 1
+    bond_header_idx = _find_section_start(lines, '@<TRIPOS>BOND')
+    atom_lines = lines[atom_start:bond_header_idx]
+
+    bond_start = bond_header_idx + 1
+    if input_type == 'ligand':
+        bond_end = _find_next_section(lines, bond_start)
+    else:
+        try:
+            bond_end = _find_section_start(lines, '@<TRIPOS>SUBSTRUCTURE')
+        except ValueError:
+            bond_end = _find_next_section(lines, bond_start)
+    bond_lines = lines[bond_start:bond_end]
+    return atom_lines, bond_lines
+
 def mol2graph(path, ATOM_TYPE, input_type):
     with open(path) as f:
         lines = f.readlines()
-    atom_lines = lines[lines.index('@<TRIPOS>ATOM\n')+1:lines.index('@<TRIPOS>BOND\n')]
-    if input_type == 'ligand':
-        bond_lines = lines[lines.index('@<TRIPOS>BOND\n') + 1:]
-    else:
-        bond_lines = lines[lines.index('@<TRIPOS>BOND\n')+1:lines.index('@<TRIPOS>SUBSTRUCTURE\n')]
+    atom_lines, bond_lines = _atom_and_bond_lines(lines, input_type)
     atoms = []
     for atom in atom_lines:
         if len(atom.split()) < 6:
@@ -117,11 +144,7 @@ def mol2_to_graph_coords(mol2_file, ATOM_TYPE, using_hydrogen, input_type):
     with open(mol2_file, 'r') as fin:
         lines = fin.readlines()
 
-    atom_lines = lines[lines.index('@<TRIPOS>ATOM\n')+1:lines.index('@<TRIPOS>BOND\n')]
-    if input_type == 'ligand':
-        bond_lines = lines[lines.index('@<TRIPOS>BOND\n') + 1:]
-    else:
-        bond_lines = lines[lines.index('@<TRIPOS>BOND\n')+1:lines.index('@<TRIPOS>SUBSTRUCTURE\n')]
+    atom_lines, bond_lines = _atom_and_bond_lines(lines, input_type)
 
     def line_to_atom(line):
         _, name, x, y, z, element, res_id, res_name, _ = re.split(r'\s+', line)[:9]
@@ -339,11 +362,11 @@ class GraphData(InMemoryDataset):
         super().__init__(root)
 
         if name == "protac":
-            self.data, self.slices = torch.load(self.processed_paths[0])
+            self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
         elif name == "ligase_pocket":
-            self.data, self.slices = torch.load(self.processed_paths[1])
+            self.data, self.slices = torch.load(self.processed_paths[1], weights_only=False)
         elif name == "target_pocket":
-            self.data, self.slices = torch.load(self.processed_paths[2])
+            self.data, self.slices = torch.load(self.processed_paths[2], weights_only=False)
 
     @property
     def processed_file_names(self):
@@ -359,6 +382,26 @@ class GraphData(InMemoryDataset):
             name_dic = json.load(f)
 
         key_list = list(name_dic.keys())
+        protac_feature_path = os.path.join(self.root, 'features', 'protac_feature.npy')
+        if os.path.exists(protac_feature_path):
+            with open(protac_feature_path, 'rb') as f:
+                protac_feature_probe = np.load(f, allow_pickle=True)
+            max_feature_rows = int(protac_feature_probe.shape[0])
+            filtered_keys = []
+            dropped = 0
+            for key in key_list:
+                try:
+                    idx = int(key)
+                except ValueError:
+                    dropped += 1
+                    continue
+                if 0 <= idx < max_feature_rows:
+                    filtered_keys.append(key)
+                else:
+                    dropped += 1
+            if dropped > 0:
+                print(f'feature/index alignment filter applied: kept={len(filtered_keys)} dropped={dropped} range=[0,{max_feature_rows - 1}]')
+            key_list = filtered_keys
         # key_list = []
         # for key, value in name_dic.items():
         #     if value['label'] == 0 or value['label'] == 1:

@@ -9,6 +9,18 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOWNSTREAM_ROOT = PROJECT_ROOT / "downstream"
+DEFAULT_PYTHON = str(PROJECT_ROOT / "molinsim" / "bin" / "python")
+
+
+def _to_downstream_rel(path_str: str) -> str:
+    path = Path(path_str)
+    if path.is_absolute():
+        return path.as_posix()
+    abs_path = (PROJECT_ROOT / path).resolve()
+    try:
+        return abs_path.relative_to(DOWNSTREAM_ROOT).as_posix()
+    except ValueError:
+        return abs_path.as_posix()
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--python",
         type=str,
-        default=sys.executable,
+        default=DEFAULT_PYTHON,
         help="Python interpreter to use for the downstream run.",
     )
     return parser.parse_args()
@@ -39,13 +51,13 @@ def main() -> None:
         "--project-root",
         ".",
         "--source-data-root",
-        args.source_data_root,
+        _to_downstream_rel(args.source_data_root),
         "--regression-data-root",
-        args.regression_data_root,
+        _to_downstream_rel(args.regression_data_root),
         "--name-json",
-        args.name_json,
+        _to_downstream_rel(args.name_json),
         "--protac-csv",
-        args.protac_csv,
+        _to_downstream_rel(args.protac_csv),
     ]
     if args.skip_graph_preprocess:
         command.append("--skip-graph-preprocess")

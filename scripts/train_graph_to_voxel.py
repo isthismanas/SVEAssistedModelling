@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import sys
 from pathlib import Path
@@ -22,9 +23,9 @@ from molsim.training.voxel import VoxelTrainer, VoxelTrainingConfig
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train graph-to-voxel model on QM9 (optional mol2 supervision).")
-    parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--max-samples", type=int, default=2000)
+    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--max-samples", type=int, default=12000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--grid-size", type=int, default=16)
     parser.add_argument("--resolution", type=float, default=0.5)
@@ -32,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default="cpu", choices=["cpu", "cuda", "mps"])
     parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--latent-dim", type=int, default=256)
-    parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument("--dropout", type=float, default=0.0)
     parser.add_argument(
         "--mol2-dir",
         type=str,
@@ -43,7 +44,13 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint-path",
         type=str,
         default=str(PROJECT_ROOT / "artifacts" / "graph_to_voxel_qm9.pt"),
-        help="Path to save trained graph-to-voxel model checkpoint.",
+        help="Path to save best graph-to-voxel model checkpoint.",
+    )
+    parser.add_argument(
+        "--last-checkpoint-path",
+        type=str,
+        default=str(PROJECT_ROOT / "artifacts" / "graph_to_voxel_qm9_last.pt"),
+        help="Path to save last-epoch graph-to-voxel checkpoint.",
     )
     parser.add_argument(
         "--artifact-path",
@@ -104,6 +111,9 @@ def main() -> None:
             batch_size=args.batch_size,
             epochs=args.epochs,
             device=args.device,
+            occupied_weight=8.0,
+            occupancy_threshold=0.1,
+            sparsity_weight=1e-3,
         ),
         voxel_config=voxel_cfg,
         mol2_dir=args.mol2_dir if args.mol2_dir else None,
@@ -111,35 +121,68 @@ def main() -> None:
 
     history = trainer.fit(train_data, val_data)
 
+    best_epoch = None
+    best_val_mse = math.inf
+    best_val_overlap = -math.inf
+    for row in history:
+        val_mse = float(row["val_voxel_mse"])
+        val_overlap = float(row["val_voxel_overlap"])
+        if (val_overlap > best_val_overlap) or (
+            math.isclose(val_overlap, best_val_overlap) and val_mse < best_val_mse
+        ):
+            best_epoch = int(row["epoch"])
+            best_val_mse = val_mse
+            best_val_overlap = val_overlap
+
     from torch_geometric.loader import DataLoader as GeoDataLoader
 
     test_loader = GeoDataLoader(test_data, batch_size=args.batch_size, shuffle=False)
     test_metrics = trainer.evaluate(test_loader)
 
+    checkpoint_payload = {
+        "model_state_dict": model.state_dict(),
+        "model_config": {
+            "in_channels": in_channels,
+            "hidden_dim": args.hidden_dim,
+            "latent_dim": args.latent_dim,
+            "grid_size": args.grid_size,
+            "dropout": args.dropout,
+        },
+        "voxel_config": {
+            "grid_size": args.grid_size,
+            "resolution": args.resolution,
+            "sigma": args.sigma,
+            "use_atomic_weights": True,
+        },
+        "dataset": {
+            "dataset_id": "qm9",
+            "max_samples": n,
+        },
+        "selection": {
+            "kind": "best_by_val_overlap_then_mse",
+            "best_epoch": best_epoch,
+            "best_val_voxel_mse": best_val_mse,
+            "best_val_voxel_overlap": best_val_overlap,
+        },
+    }
+
     checkpoint_path = Path(args.checkpoint_path).resolve()
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(checkpoint_payload, checkpoint_path)
+
+    last_checkpoint_path = Path(args.last_checkpoint_path).resolve()
+    last_checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "model_state_dict": model.state_dict(),
-            "model_config": {
-                "in_channels": in_channels,
-                "hidden_dim": args.hidden_dim,
-                "latent_dim": args.latent_dim,
-                "grid_size": args.grid_size,
-                "dropout": args.dropout,
-            },
-            "voxel_config": {
-                "grid_size": args.grid_size,
-                "resolution": args.resolution,
-                "sigma": args.sigma,
-                "use_atomic_weights": True,
-            },
-            "dataset": {
-                "dataset_id": "qm9",
-                "max_samples": n,
+            **checkpoint_payload,
+            "selection": {
+                "kind": "last_epoch_snapshot",
+                "best_epoch": best_epoch,
+                "best_val_voxel_mse": best_val_mse,
+                "best_val_voxel_overlap": best_val_overlap,
             },
         },
-        checkpoint_path,
+        last_checkpoint_path,
     )
 
     out_path = Path(args.artifact_path).resolve()
@@ -159,10 +202,15 @@ def main() -> None:
         "history": history,
         "test_metrics": test_metrics,
         "checkpoint_path": str(checkpoint_path),
+        "last_checkpoint_path": str(last_checkpoint_path),
+        "best_epoch": best_epoch,
+        "best_val_voxel_mse": best_val_mse,
+        "best_val_voxel_overlap": best_val_overlap,
     }
     out_path.write_text(json.dumps(out, indent=2) + "\n")
 
-    print(f"Saved voxel checkpoint: {checkpoint_path}")
+    print(f"Saved best voxel checkpoint: {checkpoint_path}")
+    print(f"Saved last voxel checkpoint: {last_checkpoint_path}")
     print(f"Saved voxel artifact: {out_path}")
     print(json.dumps(out, indent=2))
 

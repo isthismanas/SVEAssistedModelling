@@ -82,6 +82,9 @@ def build_base_model(args):
         ligase_pocket_model=ligase_pocket_model,
         target_pocket_model=target_pocket_model,
         hidden_size=args.hidden_size,
+        protac_dim=args.protac_dim,
+        tar_dim=args.tar_dim,
+        e3_dim=args.e3_dim,
     )
 
 
@@ -119,6 +122,8 @@ class RegressionTargetTransform:
     std: torch.Tensor
     log_dc50: bool
     normalize: bool
+    min_log10_dc50_nm: float = -8.0
+    max_log10_dc50_nm: float = 12.0
 
     @classmethod
     def fit(cls, y_train, log_dc50=True, normalize=True):
@@ -147,7 +152,9 @@ class RegressionTargetTransform:
             std = self.std.to(y.device)
             y = y * std + mean
         if self.log_dc50:
+            y[:, 0] = torch.clamp(y[:, 0], min=self.min_log10_dc50_nm, max=self.max_log10_dc50_nm)
             y[:, 0] = torch.pow(10.0, y[:, 0])
+        y = torch.nan_to_num(y, nan=0.0, posinf=1e12, neginf=0.0)
         return y
 
     def to_serializable(self):
@@ -157,6 +164,8 @@ class RegressionTargetTransform:
             "std": self.std.detach().cpu().tolist(),
             "log_dc50": bool(self.log_dc50),
             "normalize": bool(self.normalize),
+            "min_log10_dc50_nm": float(self.min_log10_dc50_nm),
+            "max_log10_dc50_nm": float(self.max_log10_dc50_nm),
         }
 
     @classmethod
@@ -166,6 +175,8 @@ class RegressionTargetTransform:
             std=torch.tensor(payload["std"], dtype=torch.float32),
             log_dc50=bool(payload.get("log_dc50", True)),
             normalize=bool(payload.get("normalize", True)),
+            min_log10_dc50_nm=float(payload.get("min_log10_dc50_nm", -8.0)),
+            max_log10_dc50_nm=float(payload.get("max_log10_dc50_nm", 12.0)),
         )
 
 
@@ -224,8 +235,8 @@ def load_dataset_arrays(dataset_root, dataset_type):
         name_dict = json.load(f)
     name_list = list(name_dict.keys())
 
-    label = np.asarray(torch.load(dataset_root / "processed" / "label.pt"), dtype=np.float32)
-    feature = np.asarray(torch.load(dataset_root / "processed" / "feature.pt"), dtype=np.float32)
+    label = np.asarray(torch.load(dataset_root / "processed" / "label.pt", weights_only=False), dtype=np.float32)
+    feature = np.asarray(torch.load(dataset_root / "processed" / "feature.pt", weights_only=False), dtype=np.float32)
 
     if label.ndim != 2 or label.shape[1] != 2:
         raise ValueError(
@@ -384,7 +395,19 @@ def run_gnn_variant(args, variant, dataset_root, name_list, label, feature, save
         test_indices=test_indices,
     )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    requested = str(getattr(args, "device", "auto")).lower()
+    if requested == "mps":
+        device = torch.device("mps")
+    elif requested == "cuda":
+        device = torch.device("cuda")
+    elif requested == "cpu":
+        device = torch.device("cpu")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
     model = build_model_for_variant(args, variant).to(device)
 
     optimizer = torch.optim.Adam(

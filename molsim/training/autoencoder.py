@@ -15,6 +15,11 @@ class AutoencoderTrainingConfig:
     batch_size: int = 32
     epochs: int = 10
     device: str = "cpu"
+    occupied_weight: float = 8.0
+    occupancy_threshold: float = 0.1
+    sparsity_weight: float = 1e-3
+    l1_weight: float = 0.5
+    dice_weight: float = 0.5
 
 
 class VoxelAutoencoderTrainer:
@@ -29,7 +34,31 @@ class VoxelAutoencoderTrainer:
             lr=config.lr,
             weight_decay=config.weight_decay,
         )
-        self.loss_fn = torch.nn.MSELoss()
+
+    def _loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        base = torch.nn.functional.mse_loss(pred, target)
+        l1 = torch.nn.functional.l1_loss(pred, target)
+
+        occ_mask = target >= self.config.occupancy_threshold
+        if torch.any(occ_mask):
+            occ_loss = torch.nn.functional.smooth_l1_loss(pred[occ_mask], target[occ_mask])
+        else:
+            occ_loss = pred.new_tensor(0.0)
+
+        target_occ = (target >= self.config.occupancy_threshold).float()
+        pred_occ = pred.clamp(0.0, 1.0)
+        intersection = torch.sum(pred_occ * target_occ)
+        denom = torch.sum(pred_occ) + torch.sum(target_occ) + 1e-8
+        dice_loss = 1.0 - ((2.0 * intersection + 1e-8) / denom)
+
+        sparsity = pred.mean()
+        return (
+            base
+            + (self.config.l1_weight * l1)
+            + (self.config.occupied_weight * occ_loss)
+            + (self.config.dice_weight * dice_loss)
+            + (self.config.sparsity_weight * sparsity)
+        )
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader) -> list[dict[str, float]]:
         history: list[dict[str, float]] = []
@@ -54,7 +83,7 @@ class VoxelAutoencoderTrainer:
             recon, _ = self.model(voxel)
 
             self.optimizer.zero_grad()
-            loss = self.loss_fn(recon, voxel)
+            loss = self._loss(recon, voxel)
             loss.backward()
             self.optimizer.step()
 

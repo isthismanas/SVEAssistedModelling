@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from molsim.data import list_mol2_files
 from molsim.models import VoxelAutoencoder
-from molsim.spatial import VoxelConfig, parse_mol2_structure, voxelize_positions
+from molsim.spatial import VoxelConfig, normalize_voxel, parse_mol2_structure, voxelize_positions
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _load_checkpoint(path: Path, device: torch.device) -> tuple[VoxelAutoencoder, VoxelConfig]:
+def _load_checkpoint(path: Path, device: torch.device) -> tuple[VoxelAutoencoder, VoxelConfig, str]:
     ckpt = torch.load(path, map_location=device)
     model_cfg = ckpt["model_config"]
     voxel_cfg = ckpt["voxel_config"]
@@ -60,17 +60,21 @@ def _load_checkpoint(path: Path, device: torch.device) -> tuple[VoxelAutoencoder
     model.to(device)
     model.eval()
 
+    input_normalization = str(voxel_cfg.get("input_normalization", "none"))
     return model, VoxelConfig(
         grid_size=int(voxel_cfg["grid_size"]),
         resolution=float(voxel_cfg["resolution"]),
         sigma=float(voxel_cfg["sigma"]),
         use_atomic_weights=bool(voxel_cfg["use_atomic_weights"]),
-    )
+    ), input_normalization
 
 
-def _voxel_from_mol2(path: Path, voxel_cfg: VoxelConfig) -> torch.Tensor:
+def _voxel_from_mol2(path: Path, voxel_cfg: VoxelConfig, input_normalization: str) -> torch.Tensor:
     coords, atomic_nums, _ = parse_mol2_structure(path)
-    return voxelize_positions(coords, atomic_nums, voxel_cfg)
+    voxel = voxelize_positions(coords, atomic_nums, voxel_cfg)
+    if input_normalization == "per_sample_max":
+        voxel = normalize_voxel(voxel)
+    return voxel
 
 
 def main() -> None:
@@ -81,7 +85,7 @@ def main() -> None:
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    model, voxel_cfg = _load_checkpoint(checkpoint_path, device)
+    model, voxel_cfg, input_normalization = _load_checkpoint(checkpoint_path, device)
 
     files = list_mol2_files(args.mol2_dir)
     if args.max_samples > 0:
@@ -98,7 +102,7 @@ def main() -> None:
 
     with torch.no_grad():
         for path in files:
-            voxel = _voxel_from_mol2(path, voxel_cfg)
+            voxel = _voxel_from_mol2(path, voxel_cfg, input_normalization)
             batch.append(voxel)
             batch_names.append(path.stem)
 
@@ -131,6 +135,7 @@ def main() -> None:
         "num_samples": int(len(names)),
         "embedding_dim": int(emb_arr.shape[1]),
         "output_npz": str(output_npz),
+        "input_normalization": input_normalization,
     }
 
     output_json = Path(args.output_json).resolve()

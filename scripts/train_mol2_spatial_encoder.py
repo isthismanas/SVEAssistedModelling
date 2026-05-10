@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import sys
 from pathlib import Path
@@ -24,7 +25,7 @@ from molsim.training import AutoencoderTrainingConfig, VoxelAutoencoderTrainer
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train voxel autoencoder from mol2 files for DegradeMaster integration.")
     parser.add_argument("--mol2-dir", type=str, default=str(PROJECT_ROOT / "data" / "QM9_mol2"))
-    parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--max-samples", type=int, default=12000)
     parser.add_argument("--seed", type=int, default=42)
@@ -36,10 +37,11 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--embedding-dim", type=int, default=256)
     parser.add_argument("--base-channels", type=int, default=32)
-    parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument("--dropout", type=float, default=0.05)
 
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-6)
+    parser.add_argument("--disable-voxel-normalization", action="store_true")
     parser.add_argument("--val-fraction", type=float, default=0.1)
     parser.add_argument("--test-fraction", type=float, default=0.1)
 
@@ -47,6 +49,11 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint-path",
         type=str,
         default=str(PROJECT_ROOT / "artifacts" / "voxel_autoencoder_qm9.pt"),
+    )
+    parser.add_argument(
+        "--last-checkpoint-path",
+        type=str,
+        default=str(PROJECT_ROOT / "artifacts" / "voxel_autoencoder_qm9_last.pt"),
     )
     parser.add_argument(
         "--artifact-path",
@@ -98,9 +105,10 @@ def main() -> None:
         use_atomic_weights=True,
     )
 
-    train_ds = Mol2VoxelDataset(train_files, voxel_cfg)
-    val_ds = Mol2VoxelDataset(val_files, voxel_cfg)
-    test_ds = Mol2VoxelDataset(test_files, voxel_cfg)
+    normalize_voxel_max = not args.disable_voxel_normalization
+    train_ds = Mol2VoxelDataset(train_files, voxel_cfg, normalize=normalize_voxel_max)
+    val_ds = Mol2VoxelDataset(val_files, voxel_cfg, normalize=normalize_voxel_max)
+    test_ds = Mol2VoxelDataset(test_files, voxel_cfg, normalize=normalize_voxel_max)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
@@ -120,31 +128,63 @@ def main() -> None:
             batch_size=args.batch_size,
             epochs=args.epochs,
             device=args.device,
+            occupied_weight=8.0,
+            occupancy_threshold=0.1,
+            sparsity_weight=1e-3,
+            l1_weight=0.5,
+            dice_weight=0.5,
         ),
     )
 
     history = trainer.fit(train_loader, val_loader)
     test_metrics = trainer.evaluate(test_loader)
 
+    best_epoch = None
+    best_val_recon_mse = math.inf
+    for row in history:
+        val_recon_mse = float(row["val_recon_mse"])
+        if val_recon_mse < best_val_recon_mse:
+            best_epoch = int(row["epoch"])
+            best_val_recon_mse = val_recon_mse
+
+    checkpoint_payload = {
+        "model_state_dict": model.state_dict(),
+        "model_config": {
+            "grid_size": args.grid_size,
+            "embedding_dim": args.embedding_dim,
+            "base_channels": args.base_channels,
+            "dropout": args.dropout,
+        },
+        "voxel_config": {
+            "grid_size": args.grid_size,
+            "resolution": args.resolution,
+            "sigma": args.sigma,
+            "use_atomic_weights": True,
+            "input_normalization": "per_sample_max" if normalize_voxel_max else "none",
+        },
+        "selection": {
+            "kind": "best_by_val_recon_mse",
+            "best_epoch": best_epoch,
+            "best_val_recon_mse": best_val_recon_mse,
+        },
+    }
+
     checkpoint_path = Path(args.checkpoint_path).resolve()
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(checkpoint_payload, checkpoint_path)
+
+    last_checkpoint_path = Path(args.last_checkpoint_path).resolve()
+    last_checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "model_state_dict": model.state_dict(),
-            "model_config": {
-                "grid_size": args.grid_size,
-                "embedding_dim": args.embedding_dim,
-                "base_channels": args.base_channels,
-                "dropout": args.dropout,
-            },
-            "voxel_config": {
-                "grid_size": args.grid_size,
-                "resolution": args.resolution,
-                "sigma": args.sigma,
-                "use_atomic_weights": True,
+            **checkpoint_payload,
+            "selection": {
+                "kind": "last_epoch_snapshot",
+                "best_epoch": best_epoch,
+                "best_val_recon_mse": best_val_recon_mse,
             },
         },
-        checkpoint_path,
+        last_checkpoint_path,
     )
 
     artifact = {
@@ -167,18 +207,23 @@ def main() -> None:
             "resolution": args.resolution,
             "sigma": args.sigma,
             "use_atomic_weights": True,
+            "input_normalization": "per_sample_max" if normalize_voxel_max else "none",
         },
         "history": history,
         "test_metrics": test_metrics,
         "checkpoint_path": str(checkpoint_path),
+        "last_checkpoint_path": str(last_checkpoint_path),
+        "best_epoch": best_epoch,
+        "best_val_recon_mse": best_val_recon_mse,
     }
 
     artifact_path = Path(args.artifact_path).resolve()
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(json.dumps(artifact, indent=2) + "\n")
 
-    print(f"Saved checkpoint: {checkpoint_path}")
-    print(f"Saved artifact:   {artifact_path}")
+    print(f"Saved best checkpoint: {checkpoint_path}")
+    print(f"Saved last checkpoint: {last_checkpoint_path}")
+    print(f"Saved artifact:        {artifact_path}")
     print(json.dumps({"test_metrics": test_metrics}, indent=2))
 
 

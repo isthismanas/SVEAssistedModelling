@@ -36,6 +36,11 @@ class DataPipeline:
         "features/e3_feature.npy",
     ]
 
+    LOCAL_METADATA_FALLBACKS = [
+        Path("../SAiGENCI/DegradeMaster_FT/data/PROTAC"),
+        Path("../../SAiGENCI/DegradeMaster_FT/data/PROTAC"),
+    ]
+
     @staticmethod
     def _filename_from_url(dataset_url: str, fallback: str = "dataset.zip") -> str:
         parsed = urlparse(dataset_url)
@@ -175,6 +180,36 @@ class DataPipeline:
                 )
 
     @classmethod
+    def try_restore_metadata_from_local_fallback(cls, project_root: str | Path, target_root: str | Path) -> bool:
+        project_root = Path(project_root).resolve()
+        target_root = Path(target_root).resolve()
+
+        missing_meta = [f for f in cls.METADATA_FILES if not (target_root / f).exists()]
+        if not missing_meta:
+            return True
+
+        for rel_source in cls.LOCAL_METADATA_FALLBACKS:
+            source_root = (project_root / rel_source).resolve()
+            if not source_root.exists():
+                continue
+
+            print(f"[metadata] Trying local fallback metadata source: {source_root}")
+            for meta_rel in missing_meta:
+                src = source_root / meta_rel
+                dst = target_root / meta_rel
+                if not src.exists():
+                    continue
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                print(f"[metadata] Restored {meta_rel} from local fallback")
+
+            still_missing = [f for f in cls.METADATA_FILES if not (target_root / f).exists()]
+            if not still_missing:
+                return True
+
+        return False
+
+    @classmethod
     def prepare_protac8k(cls, project_root: str | Path = ".", check_metadata: bool = True) -> Path:
         project_root = Path(project_root).resolve()
         download_dir = project_root / "data" / "_downloads"
@@ -190,6 +225,8 @@ class DataPipeline:
 
         target_root = project_root / "data" / "PROTAC"
         cls.sync_to_project_layout(source_root, target_root)
+        if check_metadata:
+            cls.try_restore_metadata_from_local_fallback(project_root, target_root)
         cls.validate_project_layout(target_root, check_metadata=check_metadata)
         print(f"[done] Dataset prepared at: {target_root}")
         return target_root
