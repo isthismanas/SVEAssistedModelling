@@ -27,6 +27,7 @@ downstream/eval/
 results/generated/
 reports/
 CLAUDE.md
+AGENTS.md
 README.md
 ROADMAP.md
 run.md
