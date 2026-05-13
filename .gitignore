@@ -25,6 +25,7 @@ downstream/runs_classification/
 downstream/runs_regression/
 downstream/eval/
 results/generated/
+reports/
 CLAUDE.md
 README.md
 ROADMAP.md
